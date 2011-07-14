@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<log>
+    <destination>library</destination>
+    <books>
+        <property name="xp" author="Lily" />
+        <property name="vista" value="Kate" />
+        <property name="win7" value="Maggie" />
+        <property name="Arch" value="Lucy" />
+        <property name="ubuntu" value="Dave" />
+    </books>
+</log>
