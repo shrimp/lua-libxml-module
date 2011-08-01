@@ -2,7 +2,8 @@ require("libxml2")
 
 local doc = xpath.loadFile("test.xml")
 local xpc = xpath.newXPathContext(doc)
-local node = xpath.findNodes(xpc, "/log/books")
+local xpathObj = xpath.xmlXPathEvalExpression(xpc, "/log/books")
+local node = xpath.findNodes(xpathObj)
 
 while (node) do
     local children = xpath.childNode(node)
@@ -17,3 +18,8 @@ while (node) do
     end
     node = xpath.nextNode(node)
 end
+
+xpath.freeXPathObject(xpathObj)
+xpath.freeXPathContext(xpc)
+xpath.freeDoc(doc)
+xpath.xmlCleanupParser()

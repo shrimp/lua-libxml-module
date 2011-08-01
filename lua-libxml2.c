@@ -12,45 +12,116 @@
 #include <string.h>
 
 
-static xmlNodePtr _findNodes(const xmlChar *xpathExpr, xmlXPathContextPtr xpathCtx);
+xmlNodePtr xmlFirstElementChild(xmlNodePtr parent);
+xmlNodePtr xmlNextElementSibling(xmlNodePtr node);
+
+xmlNodePtr
+xmlNextElementSibling(xmlNodePtr node) {
+    if (node == NULL)
+        return(NULL);
+    switch (node->type) {
+        case XML_ELEMENT_NODE:
+        case XML_TEXT_NODE:
+        case XML_CDATA_SECTION_NODE:
+        case XML_ENTITY_REF_NODE:
+        case XML_ENTITY_NODE:
+        case XML_PI_NODE:
+        case XML_COMMENT_NODE:
+        case XML_DTD_NODE:
+        case XML_XINCLUDE_START:
+        case XML_XINCLUDE_END:
+            node = node->next;
+            break;
+        default:
+            return(NULL);
+    }
+    while (node != NULL) {
+        if (node->type == XML_ELEMENT_NODE)
+            return(node);
+        node = node->next;
+    }
+    return(NULL);
+}
+
+xmlNodePtr
+xmlFirstElementChild(xmlNodePtr parent) {
+    xmlNodePtr cur = NULL;
+
+    if (parent == NULL)
+        return(NULL);
+    switch (parent->type) {
+        case XML_ELEMENT_NODE:
+        case XML_ENTITY_NODE:
+        case XML_DOCUMENT_NODE:
+        case XML_HTML_DOCUMENT_NODE:
+            cur = parent->children;
+            break;
+        default:
+            return(NULL);
+    }
+    while (cur != NULL) {
+        if (cur->type == XML_ELEMENT_NODE)
+            return(cur);
+        cur = cur->next;
+    }
+    return(NULL);
+}
 
 
-static int lua_loadFile(lua_State *L)
+static int lua_xmlParseDoc(lua_State *L)
 {
-    const char* filename = (char *) luaL_checkstring(L, 1);
+    const char* string = (char *)luaL_checkstring(L, 1);
+
     xmlInitParser();
-    xmlDocPtr doc = xmlParseFile(filename);
+    xmlDocPtr doc = xmlParseDoc((const xmlChar *)string);
 
     if (doc == NULL) {
-        return luaL_error(L, "unable to parse file \"%s\"\n", filename);
+        lua_pushnil(L);
+        return 1;
     }
 
-    xmlDocPtr docp = (xmlDocPtr)lua_newuserdata(L, sizeof(xmlDoc));
-    *docp = *doc;
-    dd("docp : %p.\n", docp);
-    luaL_getmetatable(L, "xmlDoc");
-    lua_setmetatable(L, -2);
+    lua_pushlightuserdata(L, doc);
 
     return 1;
 }
 
 
+static int lua_loadFile(lua_State *L)
+{
+    const char* filename = (char *) luaL_checkstring(L, 1);
+    xmlDocPtr doc = xmlParseFile(filename);
+
+    if (doc == NULL) {
+        lua_pushnil(L);
+        //return luaL_error(L, "unable to parse file \"%s\"\n", filename);
+        return 1;
+    }
+
+    lua_pushlightuserdata(L, doc);
+
+    return 1;
+}
+
+
+static int lua_initParser(lua_State *L)
+{
+    xmlInitParser();
+    return 1;
+}
+
 static int lua_newXPathContext(lua_State *L)
 {
-    const xmlDocPtr doc = (xmlDocPtr)luaL_checkudata(L, 1, "xmlDoc");
+    const xmlDocPtr doc = (xmlDocPtr)lua_touserdata(L, 1);
     xmlXPathContextPtr   xpathCtx;
     xpathCtx = xmlXPathNewContext(doc);
 
     if(xpathCtx == NULL) {
-        luaL_error(L, "Error: unable to create new XPath context\n");
         xmlFreeDoc(doc);
-        return 2;
+        lua_pushnil(L);
+        return 1;
     }
 
-    xmlXPathContextPtr xpc = (xmlXPathContextPtr)lua_newuserdata(L, sizeof(xmlXPathContext));
-    *xpc = *xpathCtx;
-    luaL_getmetatable(L, "xmlXPathContext");
-    lua_setmetatable(L, -2);
+    lua_pushlightuserdata(L, xpathCtx);
 
     return 1;
 }
@@ -58,7 +129,7 @@ static int lua_newXPathContext(lua_State *L)
 
 static int lua_nodeName(lua_State *L)
 {
-    xmlNodePtr xnp  = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
     const char *name = (char *)xnp->name;
 
     if (name == NULL) {
@@ -73,7 +144,7 @@ static int lua_nodeName(lua_State *L)
 
 static int lua_registerNs(lua_State *L)
 {
-    const xmlXPathContextPtr xpcp  = (xmlXPathContextPtr)luaL_checkudata(L, 1, "xmlXPathContext");
+    const xmlXPathContextPtr xpcp  = (xmlXPathContextPtr)lua_touserdata(L, 1);
     const xmlChar *ns   = (xmlChar *)luaL_checkstring(L, 2);
     const xmlChar *v    = (xmlChar *)luaL_checkstring(L, 3);
 
@@ -85,41 +156,43 @@ static int lua_registerNs(lua_State *L)
 }
 
 
-static xmlNodePtr _findNodes(const xmlChar *xpathExpr, xmlXPathContextPtr xpathCtx)
+static int lua_xmlXPathEvalExpression(lua_State *L)
 {
+    const xmlXPathContextPtr xpathCtx  = (xmlXPathContextPtr)lua_touserdata(L, 1);
+    const xmlChar *xpathExpr   = (xmlChar *)luaL_checkstring(L, 2);
     xmlXPathObjectPtr xpathObj = xmlXPathEvalExpression(xpathExpr, xpathCtx);
 
     if(xpathObj == NULL) {
-        xmlXPathFreeContext(xpathCtx);
-        dd("unable to evaluate xpath expression \"%s\"\n", xpathExpr);
-        return NULL;
+        lua_pushnil(L);
+        return 1;
     }
 
-    xmlNodeSetPtr nodeset = xpathObj->nodesetval;
-    if (nodeset == NULL || xmlXPathNodeSetIsEmpty(nodeset)) {
-        dd("there's no result for the xpath expression \"%s\"\n", xpathExpr);
-        return NULL;
-    }
+    lua_pushlightuserdata(L, xpathObj);
 
-    return  *nodeset->nodeTab;
+    return 1;
+
 }
 
 
 static int lua_findNodes(lua_State *L)
 {
-    const xmlXPathContextPtr xpathCtx  = (xmlXPathContextPtr)luaL_checkudata(L, 1, "xmlXPathContext");
-    const xmlChar *xpathExpr   = (xmlChar *)luaL_checkstring(L, 2);
+    const xmlXPathObjectPtr xpathObj  = (xmlXPathObjectPtr)lua_touserdata(L, 1);
 
-    xmlNodePtr np = _findNodes(xpathExpr, xpathCtx);
+    xmlNodeSetPtr nodeset = xpathObj->nodesetval;
+    if (nodeset == NULL || xmlXPathNodeSetIsEmpty(nodeset)) {
+        dd("there's no result for the xpath expression \"%s\"\n", xpathExpr);
+        lua_pushnil(L);
+        return 1;
+    }
+
+    xmlNodePtr np =  *nodeset->nodeTab;
+
     if (np == NULL) {
         lua_pushnil(L);
         return 1;
     }
 
-    xmlNodePtr node = (xmlNodePtr)lua_newuserdata(L, sizeof(xmlNode));
-    *node = *np;
-    luaL_getmetatable(L, "xmlNode");
-    lua_setmetatable(L, -2);
+    lua_pushlightuserdata(L, np);
 
     return 1;
 }
@@ -127,7 +200,7 @@ static int lua_findNodes(lua_State *L)
 
 static int lua_getAttribute(lua_State *L)
 {
-    xmlNodePtr xnp  = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
     const xmlChar * name     = (xmlChar *)luaL_checkstring(L, 2);
     char * attr     = (char *)xmlGetProp(xnp, name);
 
@@ -137,30 +210,28 @@ static int lua_getAttribute(lua_State *L)
     }
 
     lua_pushstring(L, attr);
+    free(attr);
     return 1;
 }
 
 
 static int lua_childNode(lua_State *L)
 {
-    xmlNodePtr xnp  = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
     xmlNodePtr cnode = xmlFirstElementChild(xnp);
     if (cnode == NULL) {
         lua_pushnil(L);
         return 1;
     }
 
-    xmlNodePtr child = (xmlNodePtr)lua_newuserdata(L, sizeof(xmlNode));
-    *child = *cnode;
-    luaL_getmetatable(L, "xmlNode");
-    lua_setmetatable(L, -2);
+    lua_pushlightuserdata(L, cnode);
     return 1;
 }
 
 
 static int lua_nextNode(lua_State *L)
 {
-    xmlNodePtr node = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr node = (xmlNodePtr)lua_touserdata(L, 1);
     xmlNodePtr sibling = xmlNextElementSibling(node);
     if (sibling == NULL) {
         lua_pushnil(L);
@@ -168,17 +239,14 @@ static int lua_nextNode(lua_State *L)
     }
 
     dd("have next node");
-    xmlNodePtr next = (xmlNodePtr)lua_newuserdata(L, sizeof(xmlNode));
-    *next = *sibling;
-    luaL_getmetatable(L, "xmlNode");
-    lua_setmetatable(L, -2);
+    lua_pushlightuserdata(L, sibling);
     return 1;
 }
 
 
 static int lua_getContent(lua_State *L)
 {
-    xmlNodePtr xnp  = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
     if (xnp->children == NULL) {
         lua_pushnil(L);
         return 1;
@@ -192,7 +260,7 @@ static int lua_getContent(lua_State *L)
     }
 
     lua_pushstring(L, content);
-    xmlFree(content);
+    free(content);
     return 1;
 }
 
@@ -214,9 +282,9 @@ static char * _findValue(xmlNodePtr node, xmlChar *name)
 
 static int lua_findValue(lua_State *L)
 {
-    xmlNodePtr node     = (xmlNodePtr) luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr node     = (xmlNodePtr) lua_touserdata(L, 1);
     xmlChar * nodename  = (xmlChar *) luaL_checkstring(L, 2);
-    char * value        = _findValue(node, nodename);
+    const char * value        = _findValue(node, nodename);
     dd("find node's value is %s\n.", value);
 
     if (value == NULL) {
@@ -231,7 +299,7 @@ static int lua_findValue(lua_State *L)
 
 static int lua_getNsPrefix(lua_State *L)
 {
-    xmlNodePtr xnp  = (xmlNodePtr)luaL_checkudata(L, 1, "xmlNode");
+    xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
     if (xnp->ns == NULL || xnp->ns->prefix == NULL) {
         lua_pushnil(L);
         return 1;
@@ -245,8 +313,65 @@ static int lua_getNsPrefix(lua_State *L)
 }
 
 
+static int lua_freeDoc(lua_State *L)
+{
+    const xmlDocPtr doc = (xmlDocPtr)lua_touserdata(L, 1);
+    if (doc == NULL) {
+        return 1;
+    }
+
+    xmlFreeDoc(doc);
+    return 0;
+}
+
+
+static int lua_freeNode(lua_State *L)
+{
+    const xmlNodePtr xnp  = (xmlNodePtr)lua_touserdata(L, 1);
+    if (xnp == NULL) {
+        return 1;
+    }
+
+    xmlFreeNode(xnp);
+    return 0;
+}
+
+static int lua_freeXPathContext(lua_State *L)
+{
+    const xmlXPathContextPtr xpathCtx  = (xmlXPathContextPtr)lua_touserdata(L, 1);
+    if (xpathCtx == NULL) {
+        return 1;
+    }
+
+    xmlXPathFreeContext(xpathCtx);
+    return 0;
+}
+
+static int lua_freeXPathObject(lua_State *L)
+{
+    const xmlXPathObjectPtr xpathObj  = (xmlXPathObjectPtr)lua_touserdata(L, 1);
+    if (xpathObj == NULL) {
+        return 1;
+    }
+
+    xmlXPathFreeObject(xpathObj);
+    return 0;
+}
+
+static int lua_xmlCleanupParser(lua_State *L)
+{
+    xmlCleanupParser();
+    return 0;
+}
+
 static const struct luaL_Reg xpath[] = {
+    {"xmlCleanupParser", lua_xmlCleanupParser},
+    {"freeDoc", lua_freeDoc},
+    {"freeNode", lua_freeNode},
+    {"freeXPathContext", lua_freeXPathContext},
+    {"freeXPathObject", lua_freeXPathObject},
     {"loadFile", lua_loadFile},
+    {"xmlParseDoc", lua_xmlParseDoc},
     {"newXPathContext", lua_newXPathContext},
     {"registerNs", lua_registerNs},
     {"findNodes", lua_findNodes},
@@ -257,6 +382,8 @@ static const struct luaL_Reg xpath[] = {
     {"nextNode", lua_nextNode},
     {"getNsPrefix", lua_getNsPrefix},
     {"findValue", lua_findValue},
+    {"initParser", lua_initParser},
+    {"xmlXPathEvalExpression", lua_xmlXPathEvalExpression},
     {NULL, NULL}
 };
 
@@ -265,10 +392,6 @@ int
 luaopen_libxml2(lua_State *L)
 {
     luaL_register(L, "xpath", xpath);
-    luaL_newmetatable(L, "xmlXPathContext");
-    luaL_newmetatable(L, "xmlDoc");
-    luaL_newmetatable(L, "xmlNode");
-    luaL_newmetatable(L, "xmlNodeSet");
 
     return 1;
 }

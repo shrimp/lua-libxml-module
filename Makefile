@@ -19,10 +19,5 @@ all: $(SOS)
 $(SOS): $(OBJS)
 	$(CC) -o $@ -shared $(OBJS) $(LIBS)
 
-.PHONY: clean doc
 clean:
-	rm -f $(OBJS) $(SOS) core core.* a.out
-
-
-tar: clean
-	git archive --format=tar --prefix=lua-xmlreader-$(VERSION)/ v$(VERSION) | gzip > lua-xmlreader-$(VERSION).tar.gz
+	rm -f $(OBJS) $(SOS)
