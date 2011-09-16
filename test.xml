@@ -2,7 +2,7 @@
 <log>
     <destination>library</destination>
     <books>
-        <property name="xp" author="Lily" />
+        <property name="xp" value="Lily" />
         <property name="vista" value="Kate" />
         <property name="win7" value="Maggie" />
         <property name="Arch" value="Lucy" />

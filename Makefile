@@ -12,7 +12,7 @@ LIBS= -lxml2
 
 OBJS= lua-libxml2.o
 
-SOS= libxml2.so
+SOS= lua-libxml2.so
 
 all: $(SOS)
 

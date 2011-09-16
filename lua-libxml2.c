@@ -178,9 +178,15 @@ static int lua_findNodes(lua_State *L)
 {
     const xmlXPathObjectPtr xpathObj  = (xmlXPathObjectPtr)lua_touserdata(L, 1);
 
+    if (xpathObj == NULL) {
+        dd("Error: param shouldn't be nil\n");
+        lua_pushnil(L);
+        return 1;
+    }
+
     xmlNodeSetPtr nodeset = xpathObj->nodesetval;
     if (nodeset == NULL || xmlXPathNodeSetIsEmpty(nodeset)) {
-        dd("there's no result for the xpath expression \"%s\"\n", xpathExpr);
+        dd("there's no result for the xpath expression\n");
         lua_pushnil(L);
         return 1;
     }
@@ -193,6 +199,36 @@ static int lua_findNodes(lua_State *L)
     }
 
     lua_pushlightuserdata(L, np);
+
+    return 1;
+}
+
+static int lua_getAllAttribute(lua_State *L)
+{
+    xmlNodePtr xnp = (xmlNodePtr)lua_touserdata(L, 1);
+    if (xnp == NULL) {
+        dd("Error: param shouldn't be nil\n");
+        lua_pushnil(L);
+        return 1;
+    }
+
+    xmlAttr * xap = (xmlAttrPtr)xnp->properties;
+    lua_newtable(L);
+    if (xap == NULL) {
+        dd("Warning: this node doesn't have attributes.\n");
+        lua_pushnil(L);
+        return 1;
+    }
+
+    while (xap != NULL) {
+        const xmlChar *attrName = xap->name;
+        char * attrValue = (char *)xmlGetProp(xnp, attrName);
+        //dd("attrName: %s\n", (char *)attrName);
+        //dd("attrValue: %s\n", attrValue);
+        lua_pushstring(L, attrValue);
+        lua_setfield(L, -2, (const char *)attrName);
+        xap = (xmlAttr *)xap->next;
+    }
 
     return 1;
 }
@@ -238,7 +274,6 @@ static int lua_nextNode(lua_State *L)
         return 1;
     }
 
-    dd("have next node");
     lua_pushlightuserdata(L, sibling);
     return 1;
 }
@@ -377,6 +412,7 @@ static const struct luaL_Reg xpath[] = {
     {"findNodes", lua_findNodes},
     {"childNode", lua_childNode},
     {"getAttribute", lua_getAttribute},
+    {"getAllAttribute", lua_getAllAttribute},
     {"getContent", lua_getContent},
     {"nodeName", lua_nodeName},
     {"nextNode", lua_nextNode},
