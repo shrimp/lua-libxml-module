@@ -213,21 +213,20 @@ static int lua_getAllAttribute(lua_State *L)
     }
 
     xmlAttr * xap = (xmlAttrPtr)xnp->properties;
-    lua_newtable(L);
     if (xap == NULL) {
         dd("Warning: this node doesn't have attributes.\n");
         lua_pushnil(L);
         return 1;
     }
 
+    lua_newtable(L);
     while (xap != NULL) {
-        const xmlChar *attrName = xap->name;
+        xmlChar * attrName = (xmlChar *)xap->name;
         char * attrValue = (char *)xmlGetProp(xnp, attrName);
-        //dd("attrName: %s\n", (char *)attrName);
-        //dd("attrValue: %s\n", attrValue);
         lua_pushstring(L, attrValue);
         lua_setfield(L, -2, (const char *)attrName);
         xap = (xmlAttr *)xap->next;
+        free(attrValue);
     }
 
     return 1;
